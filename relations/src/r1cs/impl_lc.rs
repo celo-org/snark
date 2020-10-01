@@ -1,6 +1,14 @@
-use crate::{LinearCombination, Variable, Vec};
-use algebra_core::Field;
-use core::ops::{Add, AddAssign, Deref, DerefMut, Mul, MulAssign, Neg, Sub};
+use crate::r1cs::{LinearCombination, Variable};
+use ark_std::{vec, vec::Vec, ops::{Add, AddAssign, Deref, DerefMut, Mul, MulAssign, Neg, Sub}};
+use ark_ff::Field;
+
+/// Generate a `LinearCombination` from arithmetic expressions involving `Variable`s.
+#[macro_export]
+macro_rules! lc {
+    () => {
+        $crate::r1cs::LinearCombination::zero()
+    };
+}
 
 impl<F: Field> LinearCombination<F> {
     /// Create a new empty linear combination.
@@ -50,14 +58,14 @@ impl<F: Field> DerefMut for LinearCombination<F> {
 impl<F: Field> From<(F, Variable)> for LinearCombination<F> {
     #[inline]
     fn from(input: (F, Variable)) -> Self {
-        LinearCombination(crate::vec![input])
+        LinearCombination(vec![input])
     }
 }
 
 impl<F: Field> From<Variable> for LinearCombination<F> {
     #[inline]
     fn from(var: Variable) -> Self {
-        LinearCombination(crate::vec![(F::one(), var)])
+        LinearCombination(vec![(F::one(), var)])
     }
 }
 

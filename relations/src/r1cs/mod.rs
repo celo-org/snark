@@ -1,40 +1,11 @@
 //! Core interface for working with Rank-1 Constraint Systems (R1CS).
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![deny(unused_import_braces, unused_qualifications, trivial_casts)]
-#![deny(trivial_numeric_casts, private_in_public, variant_size_differences)]
-#![deny(stable_features, unreachable_pub, non_shorthand_field_patterns)]
-#![deny(unused_attributes, unused_imports, unused_mut, missing_docs)]
-#![deny(renamed_and_removed_lints, unused_allocation)]
-#![deny(unused_comparisons, bare_trait_objects, unused_must_use, const_err)]
-#![deny(unsafe_code)]
+use ark_std::vec::Vec;
 
-#[cfg(not(feature = "std"))]
-pub extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-pub use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    format,
-    rc::Rc,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
-
-#[cfg(feature = "std")]
-pub use std::{
-    collections::{BTreeMap, BTreeSet},
-    format,
-    rc::Rc,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
-
+#[macro_use]
+mod impl_lc;
 mod constraint_system;
 mod error;
-mod impl_lc;
 #[cfg(feature = "std")]
 mod trace;
 
@@ -43,7 +14,7 @@ pub use crate::trace::{ConstraintLayer, ConstraintTrace, TraceStep, TracingMode}
 #[cfg(feature = "std")]
 pub use tracing::info_span;
 
-pub use algebra_core::{Field, ToConstraintField};
+pub use ark_ff::{Field, ToConstraintField};
 pub use constraint_system::{
     ConstraintMatrices, ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, Namespace,
     SynthesisMode,
@@ -52,12 +23,13 @@ pub use error::SynthesisError;
 
 use core::cmp::Ordering;
 
-/// A linear combination of variables according to associated coefficients.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LinearCombination<F: Field>(pub Vec<(F, Variable)>);
 
 /// A sparse representation of constraint matrices.
 pub type Matrix<F> = Vec<Vec<(F, usize)>>;
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+/// An opaque counter for symbolic linear combinations.
+pub struct LcIndex(usize);
 
 /// Represents the different kinds of variables present in a constraint system.
 #[derive(Copy, Clone, PartialEq, Debug, Eq)]
@@ -74,17 +46,10 @@ pub enum Variable {
     SymbolicLc(LcIndex),
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-/// An opaque counter for symbolic linear combinations.
-pub struct LcIndex(usize);
+/// A linear combination of variables according to associated coefficients.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinearCombination<F: Field>(pub Vec<(F, Variable)>);
 
-/// Generate a `LinearCombination` from arithmetic expressions involving `Variable`s.
-#[macro_export]
-macro_rules! lc {
-    () => {
-        $crate::LinearCombination::zero()
-    };
-}
 
 /// Generate a `Namespace` with name `name` from `ConstraintSystem` `cs`.
 /// `name` must be a `&'static str`.
@@ -93,16 +58,16 @@ macro_rules! ns {
     ($cs:expr, $name:expr) => {{
         #[cfg(feature = "std")]
         {
-            let span = $crate::info_span!(target: "r1cs", $name);
+            let span = $crate::r1cs::info_span!(target: "r1cs", $name);
             let id = span.id();
             let _enter_guard = span.enter();
             core::mem::forget(_enter_guard);
             core::mem::forget(span);
-            $crate::Namespace::new($cs.clone(), id)
+            $crate::r1cs::Namespace::new($cs.clone(), id)
         }
         #[cfg(not(feature = "std"))]
         {
-            $crate::Namespace::from($cs.clone())
+            $crate::r1cs::Namespace::from($cs.clone())
         }
     }};
 }
@@ -177,7 +142,7 @@ impl Variable {
 
 impl PartialOrd for Variable {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use crate::Variable::*;
+        use Variable::*;
         match (self, other) {
             (Zero, Zero) => Some(Ordering::Equal),
             (One, One) => Some(Ordering::Equal),

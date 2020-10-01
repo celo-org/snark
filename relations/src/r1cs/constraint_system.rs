@@ -1,11 +1,8 @@
 #[cfg(feature = "std")]
 use crate::ConstraintTrace;
-use crate::{
-    format, vec, BTreeMap, LcIndex, LinearCombination, Matrix, Rc, String, SynthesisError,
-    Variable, Vec,
-};
-use algebra_core::Field;
-use core::cell::{Ref, RefCell, RefMut};
+use ark_std::{format, vec, collections::BTreeMap, rc::Rc, cell::{Ref, RefCell, RefMut}, string::String, vec::Vec};
+use crate::r1cs::{LcIndex, LinearCombination, Matrix, SynthesisError, Variable};
+use ark_ff::Field;
 
 /// Computations are expressed in terms of rank-1 constraint systems (R1CS).
 /// The `generate_constraints` method is called to generate constraints for
@@ -513,7 +510,7 @@ impl<F: Field> ConstraintSystemRef<F> {
     /// # Panics
     /// This method panics if `self` is already mutably borrowed.
     #[inline]
-    pub fn borrow(&self) -> Option<Ref<ConstraintSystem<F>>> {
+    pub fn borrow(&self) -> Option<Ref<'_, ConstraintSystem<F>>> {
         self.inner().map(|cs| cs.borrow())
     }
 
@@ -522,7 +519,7 @@ impl<F: Field> ConstraintSystemRef<F> {
     /// # Panics
     /// This method panics if `self` is already mutably borrowed.
     #[inline]
-    pub fn borrow_mut(&self) -> Option<RefMut<ConstraintSystem<F>>> {
+    pub fn borrow_mut(&self) -> Option<RefMut<'_, ConstraintSystem<F>>> {
         self.inner().map(|cs| cs.borrow_mut())
     }
 
@@ -739,8 +736,9 @@ impl<F: Field> ConstraintSystemRef<F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
-    use algebra::{bls12_381::Fr, One};
+    use crate::r1cs::*;
+    use ark_bls12_381::Fr;
+    use ark_ff::One;
 
     #[test]
     fn matrix_generation() -> Result<(), SynthesisError> {
