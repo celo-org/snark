@@ -1,4 +1,4 @@
-<h1 align="center">arkworks::snark</h1>
+<h1 align="center">SNARK and Relation Traits</h1>
 
 <p align="center">
     <img src="https://github.com/arkworks-rs/algebra/workflows/CI/badge.svg?branch=master">
@@ -15,10 +15,14 @@ This library is released under the MIT License and the Apache v2 License (see [L
 
 ## Directory structure
 
-This repository contains several Rust crates: 
+This repository contains two Rust crates:
 
 * [`ark-snark`](snark): Provides generic traits for zkSNARKs
 * [`ark-relations`](relations): Provides generic traits for NP relations used in programming zkSNARKs, such as R1CS
+
+## Overview
+
+This repository provides the core infrastucture for using the succinct argument systems that arkworks provides. Users who want to produce arguments about various problems of interest will first reduce those problems to an NP relation, various examples of which are defined in the `ark-relations` crate. Then a SNARK system defined over that relation is used to produce a succinct argument. The `ark-snark` crate defines a `SNARK` trait that encapsulates the general functionality, as well as specific traits for various types of SNARK (those with transparent and universal setup, for instance). Different repositories within the arkworks ecosystem implement this trait for various specific SNARK constructions, such as Groth16, GM17, and Marlin.
 
 ## Build guide
 
