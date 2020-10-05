@@ -7,7 +7,7 @@
     <a href="https://deps.rs/repo/github/arkworks-rs/algebra"><img src="https://deps.rs/repo/github/arkworks-rs/algebra/status.svg"></a>
 </p>
 
-The arkworks ecosystem consist of Rust libraries for designing and working with __zero knowledge succinct non-interactive arguments (zkSNARKs)__. This repository contains efficient libraries that describe interfaces for zkSNARKs, as well as interfaces for programming them.
+The arkworks ecosystem consists of Rust libraries for designing and working with __zero knowledge succinct non-interactive arguments (zkSNARKs)__. This repository contains efficient libraries that describe interfaces for zkSNARKs, as well as interfaces for programming them.
 
 This library is released under the MIT License and the Apache v2 License (see [License](#license)).
 
