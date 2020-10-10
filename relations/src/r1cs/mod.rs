@@ -10,7 +10,7 @@ mod error;
 mod trace;
 
 #[cfg(feature = "std")]
-pub use crate::trace::{ConstraintLayer, ConstraintTrace, TraceStep, TracingMode};
+pub use crate::r1cs::trace::{ConstraintLayer, ConstraintTrace, TraceStep, TracingMode};
 #[cfg(feature = "std")]
 pub use tracing::info_span;
 
@@ -22,7 +22,6 @@ pub use constraint_system::{
 pub use error::SynthesisError;
 
 use core::cmp::Ordering;
-
 
 /// A sparse representation of constraint matrices.
 pub type Matrix<F> = Vec<Vec<(F, usize)>>;
@@ -49,7 +48,6 @@ pub enum Variable {
 /// A linear combination of variables according to associated coefficients.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinearCombination<F: Field>(pub Vec<(F, Variable)>);
-
 
 /// Generate a `Namespace` with name `name` from `ConstraintSystem` `cs`.
 /// `name` must be a `&'static str`.

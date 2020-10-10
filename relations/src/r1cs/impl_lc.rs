@@ -1,6 +1,10 @@
 use crate::r1cs::{LinearCombination, Variable};
-use ark_std::{vec, vec::Vec, ops::{Add, AddAssign, Deref, DerefMut, Mul, MulAssign, Neg, Sub}};
 use ark_ff::Field;
+use ark_std::{
+    ops::{Add, AddAssign, Deref, DerefMut, Mul, MulAssign, Neg, Sub},
+    vec,
+    vec::Vec,
+};
 
 /// Generate a `LinearCombination` from arithmetic expressions involving `Variable`s.
 #[macro_export]

@@ -1,8 +1,16 @@
 #[cfg(feature = "std")]
-use crate::ConstraintTrace;
-use ark_std::{format, vec, collections::BTreeMap, rc::Rc, cell::{Ref, RefCell, RefMut}, string::String, vec::Vec};
+use crate::r1cs::ConstraintTrace;
 use crate::r1cs::{LcIndex, LinearCombination, Matrix, SynthesisError, Variable};
 use ark_ff::Field;
+use ark_std::{
+    cell::{Ref, RefCell, RefMut},
+    collections::BTreeMap,
+    format,
+    rc::Rc,
+    string::String,
+    vec,
+    vec::Vec,
+};
 
 /// Computations are expressed in terms of rank-1 constraint systems (R1CS).
 /// The `generate_constraints` method is called to generate constraints for
@@ -693,7 +701,7 @@ impl<F: Field> ConstraintSystemRef<F> {
                     .map(|trace| {
                         let mut constraint_path = String::new();
                         let mut prev_module_path = "";
-                        let mut prefixes = crate::BTreeSet::new();
+                        let mut prefixes = ark_std::collections::BTreeSet::new();
                         for step in trace.as_ref()?.path() {
                             let module_path = if prev_module_path == step.module_path {
                                 prefixes.insert(step.module_path.to_string());
