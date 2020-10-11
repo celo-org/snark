@@ -44,7 +44,7 @@ impl<S> Layer<S> for ConstraintLayer<S>
 where
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
-    fn enabled(&self, metadata: &Metadata, _ctx: layer::Context<S>) -> bool {
+    fn enabled(&self, metadata: &Metadata<'_>, _ctx: layer::Context<'_, S>) -> bool {
         match self.mode {
             TracingMode::OnlyConstraints => metadata.target() == "r1cs",
             TracingMode::NoConstraints => metadata.target() != "r1cs",
@@ -189,7 +189,7 @@ impl ConstraintTrace {
     ///
     /// # Examples
     /// ```rust
-    /// use r1cs_core::ConstraintTrace;
+    /// use ark_relations::r1cs::ConstraintTrace;
     ///
     /// pub struct MyError {
     ///     trace: Option<ConstraintTrace>,
