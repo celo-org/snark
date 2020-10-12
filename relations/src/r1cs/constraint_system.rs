@@ -10,6 +10,8 @@ use ark_std::{
     string::String,
     vec,
     vec::Vec,
+    any::{Any, TypeId},
+    boxed::Box,
 };
 
 /// Computations are expressed in terms of rank-1 constraint systems (R1CS).
@@ -47,6 +49,9 @@ pub struct ConstraintSystem<F: Field> {
     pub instance_assignment: Vec<F>,
     /// Assignments to the private input variables. This is empty if `self.mode == SynthesisMode::Setup`.
     pub witness_assignment: Vec<F>,
+
+    /// Map for gadgets to cache computation results.
+    pub cache_map: Rc<RefCell<BTreeMap<TypeId, Box<dyn Any>>>>,
 
     lc_map: BTreeMap<LcIndex, LinearCombination<F>>,
 
@@ -106,6 +111,7 @@ impl<F: Field> ConstraintSystem<F> {
             c_constraints: Vec::new(),
             instance_assignment: vec![F::one()],
             witness_assignment: Vec::new(),
+            cache_map: Rc::new(RefCell::new(BTreeMap::new())),
             #[cfg(feature = "std")]
             constraint_traces: Vec::new(),
 
@@ -253,15 +259,106 @@ impl<F: Field> ConstraintSystem<F> {
         self.lc_map = inlined_lcs;
     }
 
-    /// If a `SymbolicLc` is used in more than one location, this method makes a new
-    /// variable for that `SymbolicLc`, adds a constraint ensuring the equality of
-    /// the variable and the linear combination, and then uses that variable in every
-    /// location the `SymbolicLc` is used.
+    /// If a `SymbolicLc` is used in more than one location and has sufficient length,
+    /// this method makes a new variable for that `SymbolicLc`, adds a constraint ensuring
+    /// the equality of the variable and the linear combination, and then uses that variable
+    /// in every location the `SymbolicLc` is used.
     ///
     /// Useful for SNARKs like `Marlin` or `Fractal`, where addition gates
     /// are not cheap.
     pub fn outline_lcs(&mut self) {
-        unimplemented!()
+        if !self.should_construct_matrices() {
+            return;
+        }
+
+        // step 1: Identify all lcs that have been many times
+        let mut used_times = vec![0; self.lc_map.len()];
+
+        for (index, lc) in self.lc_map.iter() {
+            used_times[index.0] += 1;
+
+            for &(_, var) in lc.iter() {
+                if var.is_lc() {
+                    let lc_index = var.get_lc_index().expect("should be lc");
+                    used_times[lc_index.0] += 1;
+                }
+            }
+        }
+
+        // step 2: Modify the lcs accordingly
+        let mut outlined_lcs = BTreeMap::new();
+
+        let mut additional_a_constraints = Vec::<LcIndex>::new();
+        let mut additional_c_constraints_witness_assignments = Vec::<usize>::new();
+
+        for (&index, lc) in self.lc_map.iter() {
+            let mut outlined_lc = LinearCombination::new();
+            for &(coeff, var) in lc.iter() {
+                if var.is_lc() {
+                    let lc_index = var.get_lc_index().expect("should be lc");
+                    // If `var` is a `SymbolicLc`, fetch the corresponding
+                    // inlined LC, and substitute it in.
+                    let lc = outlined_lcs.get(&lc_index).expect("should be inlined");
+                    outlined_lc.extend((lc * coeff).0.into_iter());
+                } else {
+                    // Otherwise, it's a concrete variable and so we
+                    // substitute it in directly.
+                    outlined_lc.push((coeff, var));
+                }
+            }
+            outlined_lc.compactify();
+
+            let mut should_promote = false;
+
+            let this_used_times = used_times[index.0];
+            let this_len = outlined_lc.len();
+
+            if this_used_times * this_len > this_used_times + 2 + this_len {
+                should_promote = true;
+            }
+
+            if should_promote {
+                let witness_assignment = self.num_witness_variables;
+                self.num_witness_variables += 1;
+
+                if !self.is_in_setup_mode() {
+                    let mut acc = F::zero();
+                    for (coeff, var) in outlined_lc.iter() {
+                        acc += *coeff * &self.assigned_value(*var).unwrap();
+                    }
+
+                    self.witness_assignment.push(acc);
+                }
+
+                self.num_constraints += 1;
+
+                additional_a_constraints.push(index);
+                additional_c_constraints_witness_assignments.push(witness_assignment);
+
+                outlined_lcs.insert(index, LinearCombination::from(Variable::Witness(witness_assignment)));
+            }else {
+                outlined_lcs.insert(index, outlined_lc);
+            }
+        }
+
+        let mut new_lc_index = self.lc_map.len();
+
+        let one_lc_index = LcIndex(new_lc_index);
+        outlined_lcs.insert(LcIndex(new_lc_index), LinearCombination::from(Self::one()));
+        new_lc_index += 1;
+
+        for (additional_a, additional_c) in additional_a_constraints.iter().zip(additional_c_constraints_witness_assignments.iter()) {
+            let new_lc_shortened_index = LcIndex(new_lc_index);
+            outlined_lcs.insert(new_lc_shortened_index, LinearCombination::from(Variable::Witness(additional_c.clone())));
+
+            self.a_constraints.push(additional_a.clone());
+            self.b_constraints.push(one_lc_index);
+            self.c_constraints.push(new_lc_shortened_index);
+
+            new_lc_index += 1;
+        }
+
+        self.lc_map = outlined_lcs;
     }
 
     /// This step must be called after constraint generation has completed, and after
