@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 use ark_ff::{PrimeField, ToBytes};
 use core::fmt::Debug;
 use ark_relations::r1cs::ConstraintSynthesizer;
