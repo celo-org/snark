@@ -6,7 +6,8 @@ use ark_std::{
     vec::Vec,
 };
 
-/// Generate a `LinearCombination` from arithmetic expressions involving `Variable`s.
+/// Generate a `LinearCombination` from arithmetic expressions involving
+/// `Variable`s.
 #[macro_export]
 macro_rules! lc {
     () => {

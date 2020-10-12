@@ -1,23 +1,22 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-
 #![deny(
     warnings,
     unused,
     future_incompatible,
     nonstandard_style,
-    rust_2018_idioms,
+    rust_2018_idioms
 )]
 #![forbid(unsafe_code)]
 
 use ark_ff::{PrimeField, ToBytes};
-use core::fmt::Debug;
 use ark_relations::r1cs::ConstraintSynthesizer;
-use rand::{CryptoRng, RngCore};
 use ark_std::{boxed::Box, vec::Vec};
+use core::fmt::Debug;
+use rand::{CryptoRng, RngCore};
 
 pub type Error = Box<dyn ark_std::error::Error>;
 
-/* The basic functionality for a SNARK. */
+// The basic functionality for a SNARK.
 pub trait SNARK<F: PrimeField> {
     type ProvingKey: Clone;
     type VerifyingKey: Clone + ToBytes;
@@ -56,7 +55,7 @@ pub trait SNARK<F: PrimeField> {
     ) -> Result<bool, Error>;
 }
 
-/* A SNARK with (only) circuit-specific setup. */
+// A SNARK with (only) circuit-specific setup.
 pub trait CircuitSpecificSetupSNARK<F: PrimeField>: SNARK<F> {
     fn setup<C: ConstraintSynthesizer<F>, R: RngCore + CryptoRng>(
         circuit: C,
@@ -72,8 +71,8 @@ pub trait CircuitSpecificSetupSNARK<F: PrimeField>: SNARK<F> {
     }
 }
 
-/* A helper type for universal-setup SNARKs, which must infer their computation
- * size bounds. */
+// A helper type for universal-setup SNARKs, which must infer their computation
+// size bounds.
 pub enum UniversalSetupIndexResult<KeyPair, Bound> {
     Successful(KeyPair),
     NeedLargerBound(Bound),
