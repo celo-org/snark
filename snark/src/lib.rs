@@ -6,7 +6,6 @@
     future_incompatible,
     nonstandard_style,
     rust_2018_idioms,
-    missing_docs,
 )]
 #![forbid(unsafe_code)]
 
@@ -18,6 +17,7 @@ use ark_std::{boxed::Box, vec::Vec};
 
 pub type Error = Box<dyn ark_std::error::Error>;
 
+/* The basic functionality for a SNARK. */
 pub trait SNARK<F: PrimeField> {
     type ProvingKey: Clone;
     type VerifyingKey: Clone + ToBytes;
@@ -56,6 +56,7 @@ pub trait SNARK<F: PrimeField> {
     ) -> Result<bool, Error>;
 }
 
+/* A SNARK with (only) circuit-specific setup. */
 pub trait CircuitSpecificSetupSNARK<F: PrimeField>: SNARK<F> {
     fn setup<C: ConstraintSynthesizer<F>, R: RngCore + CryptoRng>(
         circuit: C,
@@ -71,6 +72,8 @@ pub trait CircuitSpecificSetupSNARK<F: PrimeField>: SNARK<F> {
     }
 }
 
+/* A helper type for universal-setup SNARKs, which must infer their computation
+ * size bounds. */
 pub enum UniversalSetupIndexResult<KeyPair, Bound> {
     Successful(KeyPair),
     NeedLargerBound(Bound),
