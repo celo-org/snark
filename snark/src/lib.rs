@@ -4,6 +4,7 @@ use ark_ff::{PrimeField, ToBytes};
 use core::fmt::Debug;
 use ark_relations::r1cs::ConstraintSynthesizer;
 use rand::{CryptoRng, RngCore};
+use ark_std::{boxed::Box, vec::Vec};
 
 pub type Error = Box<dyn ark_std::error::Error>;
 
