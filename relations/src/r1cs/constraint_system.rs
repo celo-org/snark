@@ -745,8 +745,8 @@ impl<F: Field> ConstraintSystemRef<F> {
 #[cfg(test)]
 mod tests {
     use crate::r1cs::*;
-    use ark_bls12_381::Fr;
     use ark_ff::One;
+    use ark_test_curves::bls12_381::Fr;
 
     #[test]
     fn matrix_generation() -> Result<(), SynthesisError> {
