@@ -3,6 +3,8 @@ use crate::r1cs::ConstraintTrace;
 use crate::r1cs::{LcIndex, LinearCombination, Matrix, SynthesisError, Variable};
 use ark_ff::Field;
 use ark_std::{
+    any::{Any, TypeId},
+    boxed::Box,
     cell::{Ref, RefCell, RefMut},
     collections::BTreeMap,
     format,
@@ -15,7 +17,6 @@ use ark_std::{
 /// Computations are expressed in terms of rank-1 constraint systems (R1CS).
 /// The `generate_constraints` method is called to generate constraints for
 /// both CRS generation and for proving.
-///
 // TODO: Think: should we replace this with just a closure?
 pub trait ConstraintSynthesizer<F: Field> {
     /// Drives generation of new constraints inside `cs`.
@@ -29,24 +30,32 @@ pub trait ConstraintSynthesizer<F: Field> {
 #[derive(Debug, Clone)]
 pub struct ConstraintSystem<F: Field> {
     /// The mode in which the constraint system is operating. `self` can either
-    /// be in setup mode (i.e., `self.mode == SynthesisMode::Setup`) or in proving mode
-    /// (i.e., `self.mode == SynthesisMode::Prove`). If we are in proving mode, then we
-    /// have the additional option of whether or not to construct the A, B, and
-    /// C matrices of the constraint system (see below).
+    /// be in setup mode (i.e., `self.mode == SynthesisMode::Setup`) or in
+    /// proving mode (i.e., `self.mode == SynthesisMode::Prove`). If we are
+    /// in proving mode, then we have the additional option of whether or
+    /// not to construct the A, B, and C matrices of the constraint system
+    /// (see below).
     pub mode: SynthesisMode,
-    /// The number of variables that are "public inputs" to the constraint system.
+    /// The number of variables that are "public inputs" to the constraint
+    /// system.
     pub num_instance_variables: usize,
-    /// The number of variables that are "private inputs" to the constraint system.
+    /// The number of variables that are "private inputs" to the constraint
+    /// system.
     pub num_witness_variables: usize,
     /// The number of constraints in the constraint system.
     pub num_constraints: usize,
     /// The number of linear combinations
     pub num_linear_combinations: usize,
 
-    /// Assignments to the public input variables. This is empty if `self.mode == SynthesisMode::Setup`.
+    /// Assignments to the public input variables. This is empty if `self.mode
+    /// == SynthesisMode::Setup`.
     pub instance_assignment: Vec<F>,
-    /// Assignments to the private input variables. This is empty if `self.mode == SynthesisMode::Setup`.
+    /// Assignments to the private input variables. This is empty if `self.mode
+    /// == SynthesisMode::Setup`.
     pub witness_assignment: Vec<F>,
+
+    /// Map for gadgets to cache computation results.
+    pub cache_map: Rc<RefCell<BTreeMap<TypeId, Box<dyn Any>>>>,
 
     lc_map: BTreeMap<LcIndex, LinearCombination<F>>,
 
@@ -106,6 +115,7 @@ impl<F: Field> ConstraintSystem<F> {
             c_constraints: Vec::new(),
             instance_assignment: vec![F::one()],
             witness_assignment: Vec::new(),
+            cache_map: Rc::new(RefCell::new(BTreeMap::new())),
             #[cfg(feature = "std")]
             constraint_traces: Vec::new(),
 
@@ -222,8 +232,8 @@ impl<F: Field> ConstraintSystem<F> {
         Ok(())
     }
 
-    /// Naively inlines symbolic linear combinations into the linear combinations
-    /// that use them.
+    /// Naively inlines symbolic linear combinations into the linear
+    /// combinations that use them.
     ///
     /// Useful for standard pairing-based SNARKs where addition gates are cheap.
     /// For example, in the SNARKs such as [[Groth16]](https://eprint.iacr.org/2016/260) and
@@ -253,19 +263,121 @@ impl<F: Field> ConstraintSystem<F> {
         self.lc_map = inlined_lcs;
     }
 
-    /// If a `SymbolicLc` is used in more than one location, this method makes a new
-    /// variable for that `SymbolicLc`, adds a constraint ensuring the equality of
-    /// the variable and the linear combination, and then uses that variable in every
-    /// location the `SymbolicLc` is used.
+    /// If a `SymbolicLc` is used in more than one location and has sufficient
+    /// length, this method makes a new variable for that `SymbolicLc`, adds
+    /// a constraint ensuring the equality of the variable and the linear
+    /// combination, and then uses that variable in every location the
+    /// `SymbolicLc` is used.
     ///
     /// Useful for SNARKs like `Marlin` or `Fractal`, where addition gates
     /// are not cheap.
     pub fn outline_lcs(&mut self) {
-        unimplemented!()
+        if !self.should_construct_matrices() {
+            return;
+        }
+
+        // step 1: Identify all lcs that have been many times
+        let mut used_times = vec![0; self.lc_map.len()];
+
+        for (index, lc) in self.lc_map.iter() {
+            used_times[index.0] += 1;
+
+            for &(_, var) in lc.iter() {
+                if var.is_lc() {
+                    let lc_index = var.get_lc_index().expect("should be lc");
+                    used_times[lc_index.0] += 1;
+                }
+            }
+        }
+
+        // step 2: Modify the lcs accordingly
+        let mut outlined_lcs = BTreeMap::new();
+
+        let mut additional_a_constraints = Vec::<LcIndex>::new();
+        let mut additional_c_constraints_witness_assignments = Vec::<usize>::new();
+
+        for (&index, lc) in self.lc_map.iter() {
+            let mut outlined_lc = LinearCombination::new();
+            for &(coeff, var) in lc.iter() {
+                if var.is_lc() {
+                    let lc_index = var.get_lc_index().expect("should be lc");
+                    // If `var` is a `SymbolicLc`, fetch the corresponding
+                    // inlined LC, and substitute it in.
+                    let lc = outlined_lcs.get(&lc_index).expect("should be inlined");
+                    outlined_lc.extend((lc * coeff).0.into_iter());
+                } else {
+                    // Otherwise, it's a concrete variable and so we
+                    // substitute it in directly.
+                    outlined_lc.push((coeff, var));
+                }
+            }
+            outlined_lc.compactify();
+
+            let mut should_promote = false;
+
+            let this_used_times = used_times[index.0];
+            let this_len = outlined_lc.len();
+
+            if this_used_times * this_len > this_used_times + 2 + this_len {
+                should_promote = true;
+            }
+
+            if should_promote {
+                let witness_assignment = self.num_witness_variables;
+                self.num_witness_variables += 1;
+
+                if !self.is_in_setup_mode() {
+                    let mut acc = F::zero();
+                    for (coeff, var) in outlined_lc.iter() {
+                        acc += *coeff * &self.assigned_value(*var).unwrap();
+                    }
+
+                    self.witness_assignment.push(acc);
+                }
+
+                self.num_constraints += 1;
+
+                additional_a_constraints.push(index);
+                additional_c_constraints_witness_assignments.push(witness_assignment);
+
+                outlined_lcs.insert(
+                    index,
+                    LinearCombination::from(Variable::Witness(witness_assignment)),
+                );
+            } else {
+                outlined_lcs.insert(index, outlined_lc);
+            }
+        }
+
+        let mut new_lc_index = self.lc_map.len();
+
+        let one_lc_index = LcIndex(new_lc_index);
+        outlined_lcs.insert(LcIndex(new_lc_index), LinearCombination::from(Self::one()));
+        new_lc_index += 1;
+
+        for (additional_a, additional_c) in additional_a_constraints
+            .iter()
+            .zip(additional_c_constraints_witness_assignments.iter())
+        {
+            let new_lc_shortened_index = LcIndex(new_lc_index);
+            outlined_lcs.insert(
+                new_lc_shortened_index,
+                LinearCombination::from(Variable::Witness(additional_c.clone())),
+            );
+
+            self.a_constraints.push(additional_a.clone());
+            self.b_constraints.push(one_lc_index);
+            self.c_constraints.push(new_lc_shortened_index);
+
+            new_lc_index += 1;
+        }
+
+        self.lc_map = outlined_lcs;
     }
 
-    /// This step must be called after constraint generation has completed, and after
-    /// all symbolic LCs have been inlined into the places that they are used.
+    /// This step must be called after constraint generation has completed, and
+    /// after all symbolic LCs have been inlined into the places that they
+    /// are used.
     pub fn to_matrices(&self) -> Option<ConstraintMatrices<F>> {
         if let SynthesisMode::Prove {
             construct_matrices: false,
@@ -391,9 +503,11 @@ impl<F: Field> ConstraintSystem<F> {
 /// and the matrices.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConstraintMatrices<F: Field> {
-    /// The number of variables that are "public instances" to the constraint system.
+    /// The number of variables that are "public instances" to the constraint
+    /// system.
     pub num_instance_variables: usize,
-    /// The number of variables that are "private witnesses" to the constraint system.
+    /// The number of variables that are "private witnesses" to the constraint
+    /// system.
     pub num_witness_variables: usize,
     /// The number of constraints in the constraint system.
     pub num_constraints: usize,
@@ -419,10 +533,12 @@ pub struct ConstraintMatrices<F: Field> {
 /// variables.
 #[derive(Debug, Clone)]
 pub enum ConstraintSystemRef<F: Field> {
-    /// Represents the case where we *don't* need to allocate variables or enforce
-    /// constraints. Encountered when operating over constant values.
+    /// Represents the case where we *don't* need to allocate variables or
+    /// enforce constraints. Encountered when operating over constant
+    /// values.
     None,
-    /// Represents the case where we *do* allocate variables or enforce constraints.
+    /// Represents the case where we *do* allocate variables or enforce
+    /// constraints.
     CS(Rc<RefCell<ConstraintSystem<F>>>),
 }
 
@@ -430,7 +546,7 @@ impl<F: Field> PartialEq for ConstraintSystemRef<F> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::None, Self::None) => true,
-            (_, _) => false,
+            (..) => false,
         }
     }
 }
@@ -631,8 +747,8 @@ impl<F: Field> ConstraintSystemRef<F> {
             .and_then(|cs| cs.borrow_mut().enforce_constraint(a, b, c))
     }
 
-    /// Naively inlines symbolic linear combinations into the linear combinations
-    /// that use them.
+    /// Naively inlines symbolic linear combinations into the linear
+    /// combinations that use them.
     ///
     /// Useful for standard pairing-based SNARKs where addition gates are free,
     /// such as the SNARKs in [[Groth16]](https://eprint.iacr.org/2016/260) and
@@ -643,10 +759,10 @@ impl<F: Field> ConstraintSystemRef<F> {
         }
     }
 
-    /// If a `SymbolicLc` is used in more than one location, this method makes a new
-    /// variable for that `SymbolicLc`, adds a constraint ensuring the equality of
-    /// the variable and the linear combination, and then uses that variable in every
-    /// location the `SymbolicLc` is used.
+    /// If a `SymbolicLc` is used in more than one location, this method makes a
+    /// new variable for that `SymbolicLc`, adds a constraint ensuring the
+    /// equality of the variable and the linear combination, and then uses
+    /// that variable in every location the `SymbolicLc` is used.
     ///
     /// Useful for SNARKs like `Marlin` or `Fractal`, where where addition gates
     /// are not (entirely) free.
@@ -656,8 +772,9 @@ impl<F: Field> ConstraintSystemRef<F> {
         }
     }
 
-    /// This step must be called after constraint generation has completed, and after
-    /// all symbolic LCs have been inlined into the places that they are used.
+    /// This step must be called after constraint generation has completed, and
+    /// after all symbolic LCs have been inlined into the places that they
+    /// are used.
     #[inline]
     pub fn to_matrices(&self) -> Option<ConstraintMatrices<F>> {
         self.inner().map_or(None, |cs| cs.borrow().to_matrices())
