@@ -20,7 +20,7 @@ use ark_std::{
 // TODO: Think: should we replace this with just a closure?
 pub trait ConstraintSynthesizer<F: Field> {
     /// Drives generation of new constraints inside `cs`.
-    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError>;
+    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> crate::r1cs::Result<()>;
 }
 
 /// An Rank-One `ConstraintSystem`. Enforces constraints of the form
@@ -67,6 +67,12 @@ pub struct ConstraintSystem<F: Field> {
     c_constraints: Vec<LcIndex>,
 
     lc_assignment_cache: Rc<RefCell<BTreeMap<LcIndex, F>>>,
+}
+
+impl<F: Field> Default for ConstraintSystem<F> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Defines the mode of operation of a `ConstraintSystem`.
@@ -167,9 +173,9 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Obtain a variable representing a new public instance input.
     #[inline]
-    pub fn new_input_variable<Func>(&mut self, f: Func) -> Result<Variable, SynthesisError>
+    pub fn new_input_variable<Func>(&mut self, f: Func) -> crate::r1cs::Result<Variable>
     where
-        Func: FnOnce() -> Result<F, SynthesisError>,
+        Func: FnOnce() -> crate::r1cs::Result<F>,
     {
         let index = self.num_instance_variables;
         self.num_instance_variables += 1;
@@ -182,9 +188,9 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Obtain a variable representing a new private witness input.
     #[inline]
-    pub fn new_witness_variable<Func>(&mut self, f: Func) -> Result<Variable, SynthesisError>
+    pub fn new_witness_variable<Func>(&mut self, f: Func) -> crate::r1cs::Result<Variable>
     where
-        Func: FnOnce() -> Result<F, SynthesisError>,
+        Func: FnOnce() -> crate::r1cs::Result<F>,
     {
         let index = self.num_witness_variables;
         self.num_witness_variables += 1;
@@ -197,7 +203,7 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Obtain a variable representing a linear combination.
     #[inline]
-    pub fn new_lc(&mut self, lc: LinearCombination<F>) -> Result<Variable, SynthesisError> {
+    pub fn new_lc(&mut self, lc: LinearCombination<F>) -> crate::r1cs::Result<Variable> {
         let index = LcIndex(self.num_linear_combinations);
         let var = Variable::SymbolicLc(index);
 
@@ -214,7 +220,7 @@ impl<F: Field> ConstraintSystem<F> {
         a: LinearCombination<F>,
         b: LinearCombination<F>,
         c: LinearCombination<F>,
-    ) -> Result<(), SynthesisError> {
+    ) -> crate::r1cs::Result<()> {
         if self.should_construct_matrices() {
             let a_index = self.new_lc(a)?.get_lc_index().unwrap();
             let b_index = self.new_lc(b)?.get_lc_index().unwrap();
@@ -425,7 +431,7 @@ impl<F: Field> ConstraintSystem<F> {
         let lc = self.lc_map.get(&lc)?;
         let mut acc = F::zero();
         for (coeff, var) in lc.iter() {
-            acc += *coeff * &self.assigned_value(*var)?;
+            acc += *coeff * self.assigned_value(*var)?;
         }
         Some(acc)
     }
@@ -433,7 +439,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// If `self` is satisfied, outputs `Ok(true)`.
     /// If `self` is unsatisfied, outputs `Ok(false)`.
     /// If `self.is_in_setup_mode()`, outputs `Err(())`.
-    pub fn is_satisfied(&self) -> Result<bool, SynthesisError> {
+    pub fn is_satisfied(&self) -> crate::r1cs::Result<bool> {
         self.which_is_unsatisfied().map(|s| s.is_none())
     }
 
@@ -441,7 +447,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// If `self` is unsatisfied, outputs `Some(i)`, where `i` is the index of
     /// the first unsatisfied constraint. If `self.is_in_setup_mode()`, outputs
     /// `Err(())`.
-    pub fn which_is_unsatisfied(&self) -> Result<Option<String>, SynthesisError> {
+    pub fn which_is_unsatisfied(&self) -> crate::r1cs::Result<Option<String>> {
         if self.is_in_setup_mode() {
             Err(SynthesisError::AssignmentMissing)
         } else {
@@ -584,8 +590,8 @@ impl<F: Field> Namespace<F> {
     }
 
     /// Manually leave the namespace.
-    pub fn leave_namespace(mut self) {
-        drop(&mut self)
+    pub fn leave_namespace(self) {
+        drop(self)
     }
 }
 
@@ -610,10 +616,7 @@ impl<F: Field> ConstraintSystemRef<F> {
 
     /// Returns `true` is `self == ConstraintSystemRef::None`.
     pub fn is_none(&self) -> bool {
-        match self {
-            ConstraintSystemRef::None => true,
-            _ => false,
-        }
+        matches!(self, ConstraintSystemRef::None)
     }
 
     /// Construct a `ConstraintSystemRef` from a `ConstraintSystem`.
@@ -688,9 +691,9 @@ impl<F: Field> ConstraintSystemRef<F> {
 
     /// Obtain a variable representing a new public instance input.
     #[inline]
-    pub fn new_input_variable<Func>(&self, f: Func) -> Result<Variable, SynthesisError>
+    pub fn new_input_variable<Func>(&self, f: Func) -> crate::r1cs::Result<Variable>
     where
-        Func: FnOnce() -> Result<F, SynthesisError>,
+        Func: FnOnce() -> crate::r1cs::Result<F>,
     {
         self.inner()
             .ok_or(SynthesisError::MissingCS)
@@ -708,9 +711,9 @@ impl<F: Field> ConstraintSystemRef<F> {
 
     /// Obtain a variable representing a new private witness input.
     #[inline]
-    pub fn new_witness_variable<Func>(&self, f: Func) -> Result<Variable, SynthesisError>
+    pub fn new_witness_variable<Func>(&self, f: Func) -> crate::r1cs::Result<Variable>
     where
-        Func: FnOnce() -> Result<F, SynthesisError>,
+        Func: FnOnce() -> crate::r1cs::Result<F>,
     {
         self.inner()
             .ok_or(SynthesisError::MissingCS)
@@ -728,7 +731,7 @@ impl<F: Field> ConstraintSystemRef<F> {
 
     /// Obtain a variable representing a linear combination.
     #[inline]
-    pub fn new_lc(&self, lc: LinearCombination<F>) -> Result<Variable, SynthesisError> {
+    pub fn new_lc(&self, lc: LinearCombination<F>) -> crate::r1cs::Result<Variable> {
         self.inner()
             .ok_or(SynthesisError::MissingCS)
             .and_then(|cs| cs.borrow_mut().new_lc(lc))
@@ -741,7 +744,7 @@ impl<F: Field> ConstraintSystemRef<F> {
         a: LinearCombination<F>,
         b: LinearCombination<F>,
         c: LinearCombination<F>,
-    ) -> Result<(), SynthesisError> {
+    ) -> crate::r1cs::Result<()> {
         self.inner()
             .ok_or(SynthesisError::MissingCS)
             .and_then(|cs| cs.borrow_mut().enforce_constraint(a, b, c))
@@ -777,13 +780,13 @@ impl<F: Field> ConstraintSystemRef<F> {
     /// are used.
     #[inline]
     pub fn to_matrices(&self) -> Option<ConstraintMatrices<F>> {
-        self.inner().map_or(None, |cs| cs.borrow().to_matrices())
+        self.inner().and_then(|cs| cs.borrow().to_matrices())
     }
 
     /// If `self` is satisfied, outputs `Ok(true)`.
     /// If `self` is unsatisfied, outputs `Ok(false)`.
     /// If `self.is_in_setup_mode()` or if `self == None`, outputs `Err(())`.
-    pub fn is_satisfied(&self) -> Result<bool, SynthesisError> {
+    pub fn is_satisfied(&self) -> crate::r1cs::Result<bool> {
         self.inner()
             .map_or(Err(SynthesisError::AssignmentMissing), |cs| {
                 cs.borrow().is_satisfied()
@@ -794,7 +797,7 @@ impl<F: Field> ConstraintSystemRef<F> {
     /// If `self` is unsatisfied, outputs `Some(i)`, where `i` is the index of
     /// the first unsatisfied constraint.
     /// If `self.is_in_setup_mode()` or `self == None`, outputs `Err(())`.
-    pub fn which_is_unsatisfied(&self) -> Result<Option<String>, SynthesisError> {
+    pub fn which_is_unsatisfied(&self) -> crate::r1cs::Result<Option<String>> {
         self.inner()
             .map_or(Err(SynthesisError::AssignmentMissing), |cs| {
                 cs.borrow().which_is_unsatisfied()
@@ -803,8 +806,7 @@ impl<F: Field> ConstraintSystemRef<F> {
 
     /// Obtain the assignment corresponding to the `Variable` `v`.
     pub fn assigned_value(&self, v: Variable) -> Option<F> {
-        self.inner()
-            .map_or(None, |cs| cs.borrow().assigned_value(v))
+        self.inner().and_then(|cs| cs.borrow().assigned_value(v))
     }
 
     /// Get trace information about all constraints in the system
@@ -866,7 +868,7 @@ mod tests {
     use ark_test_curves::bls12_381::Fr;
 
     #[test]
-    fn matrix_generation() -> Result<(), SynthesisError> {
+    fn matrix_generation() -> crate::r1cs::Result<()> {
         let cs = ConstraintSystem::<Fr>::new_ref();
         let two = Fr::one() + Fr::one();
         let a = cs.new_input_variable(|| Ok(Fr::one()))?;

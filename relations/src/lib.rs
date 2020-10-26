@@ -8,7 +8,8 @@
     unused,
     future_incompatible,
     nonstandard_style,
-    rust_2018_idioms
+    rust_2018_idioms,
+    missing_docs
 )]
 #![deny(unsafe_code)]
 

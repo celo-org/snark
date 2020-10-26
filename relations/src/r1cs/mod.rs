@@ -2,6 +2,9 @@
 
 use ark_std::vec::Vec;
 
+/// A result type specialized to `SynthesisError`.
+pub type Result<T> = core::result::Result<T, SynthesisError>;
+
 #[macro_use]
 mod impl_lc;
 mod constraint_system;
@@ -46,7 +49,7 @@ pub enum Variable {
 }
 
 /// A linear combination of variables according to associated coefficients.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LinearCombination<F: Field>(pub Vec<(F, Variable)>);
 
 /// Generate a `Namespace` with name `name` from `ConstraintSystem` `cs`.
@@ -74,46 +77,31 @@ impl Variable {
     /// Is `self` the zero variable?
     #[inline]
     pub fn is_zero(&self) -> bool {
-        match self {
-            Variable::Zero => true,
-            _ => false,
-        }
+        matches!(self, Variable::Zero)
     }
 
     /// Is `self` the one variable?
     #[inline]
     pub fn is_one(&self) -> bool {
-        match self {
-            Variable::One => true,
-            _ => false,
-        }
+        matches!(self, Variable::One)
     }
 
     /// Is `self` an instance variable?
     #[inline]
     pub fn is_instance(&self) -> bool {
-        match self {
-            Variable::Instance(_) => true,
-            _ => false,
-        }
+        matches!(self, Variable::Instance(_))
     }
 
     /// Is `self` a witness variable?
     #[inline]
     pub fn is_witness(&self) -> bool {
-        match self {
-            Variable::Witness(_) => true,
-            _ => false,
-        }
+        matches!(self, Variable::Witness(_))
     }
 
     /// Is `self` a linear combination?
     #[inline]
     pub fn is_lc(&self) -> bool {
-        match self {
-            Variable::SymbolicLc(_) => true,
-            _ => false,
-        }
+        matches!(self, Variable::SymbolicLc(_))
     }
 
     /// Get the `LcIndex` in `self` if `self.is_lc()`.
