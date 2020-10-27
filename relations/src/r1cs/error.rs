@@ -23,12 +23,7 @@ pub enum SynthesisError {
     UnconstrainedVariable,
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for SynthesisError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
+impl ark_std::error::Error for SynthesisError {}
 
 impl fmt::Display for SynthesisError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
