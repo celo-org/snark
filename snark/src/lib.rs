@@ -34,7 +34,7 @@ pub trait SNARK<F: PrimeField> {
     type ProcessedVerifyingKey: Clone + Default;
 
     /// Errors encountered during setup, proving, or verification.
-    type Error: ark_std::error::Error;
+    type Error: 'static + ark_std::error::Error;
 
     /// Takes in a description of a computation (specified in R1CS constraints), and
     /// samples proving and verification keys for that circuit.
